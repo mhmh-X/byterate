@@ -2,7 +2,7 @@
 # version 和 sha256 由 .github/workflows/release.yml 在每次发版时自动更新。
 cask "byterate" do
   version "0.2.3"
-  sha256 "852079ca895c1d79fbbe18f70f6f27754712ceea9d9c188805875fe54e5bf378"
+  sha256 "b458f8370d6673a221fcd8e0558aa2786e9b72b527985497c32cae88724bf6c0"
 
   url "https://github.com/mhmh-X/byterate/releases/download/v#{version}/ByteRate-#{version}.zip"
   name "ByteRate"

@@ -56,24 +56,13 @@ To update, just run it again.
 ```sh
 brew tap mhmh-X/byterate https://github.com/mhmh-X/byterate
 brew trust mhmh-x/byterate
+brew update
 brew install --cask byterate
-open -a ByteRate
 ```
 
-Upgrade later with `brew upgrade --cask byterate && open -a ByteRate`.
+Upgrade later with `brew update && brew upgrade --cask byterate`.
 
-> Homebrew installs the app but does not launch it automatically, so the final `open` command starts ByteRate. Homebrew may ask you to trust this tap before loading the cask because it is not an official Homebrew tap. The app is not notarized by Apple yet, so the install script and the cask remove the quarantine attribute after install — otherwise Gatekeeper would block it. If you'd rather not have that done for you, build from source instead.
-
-### Download
-
-Grab the latest `ByteRate-x.y.z.zip` from [Releases](https://github.com/mhmh-X/byterate/releases), unzip, and drag `ByteRate.app` into `/Applications`.
-
-The app is not notarized by Apple yet, so on first launch use **right-click → Open**, or run:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/ByteRate.app
-```
-
+> Homebrew may ask you to trust this tap before loading the cask because it is not an official Homebrew tap. The app is not notarized by Apple yet, so the install script and the cask remove the quarantine attribute after install — otherwise Gatekeeper would block it. If you'd rather not have that done for you, build from source instead.
 
 ### Build from source
 
@@ -96,7 +85,8 @@ Credentials are read locally and sent only to first-party Anthropic/OpenAI hosts
 ## Troubleshooting
 
 - **No credentials found** — sign in with the relevant CLI first, then refresh ByteRate.
-- **Installed with Homebrew but no menu bar item** — run `open -a ByteRate`. If it still doesn't appear, switch to Finder or hide a few crowded menu bar icons; macOS can hide status items behind the notch or app menus.
+- **Installed with Homebrew but no menu bar item** — run `open /Applications/ByteRate.app`. If it still doesn't appear, switch to Finder or hide a few crowded menu bar icons; macOS can hide status items behind the notch or app menus.
+- **Homebrew checksum mismatch** — your local tap is stale. Run `brew update` and retry. If it still fails: `brew untap mhmh-X/byterate && brew tap mhmh-X/byterate https://github.com/mhmh-X/byterate && brew install --cask byterate`.
 - **401 / missing token** — run the CLI login again (`codex login`, or sign in to Claude Code).
 - **429 rate-limited** — wait a few minutes; ByteRate backs off and retries automatically.
 - **Unrecognized usage response** — Anthropic/OpenAI likely changed a private quota endpoint. Update ByteRate or open an issue with the error text.

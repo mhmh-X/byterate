@@ -62,6 +62,9 @@ echo "Removing Gatekeeper quarantine attribute..."
 run_maybe_sudo xattr -dr com.apple.quarantine "$target_app" 2>/dev/null || true
 
 if [ "${BYTERATE_NO_OPEN:-0}" != "1" ]; then
+  # Stop an older running instance so open launches the newly installed app.
+  pkill -x "$APP_NAME" 2>/dev/null || true
+  sleep 1
   open "$target_app"
 fi
 

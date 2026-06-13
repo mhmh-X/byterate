@@ -55,24 +55,13 @@ curl -fsSL https://raw.githubusercontent.com/mhmh-X/byterate/main/scripts/instal
 ```sh
 brew tap mhmh-X/byterate https://github.com/mhmh-X/byterate
 brew trust mhmh-x/byterate
+brew update
 brew install --cask byterate
-open -a ByteRate
 ```
 
-升级：`brew upgrade --cask byterate && open -a ByteRate`。
+升级：`brew update && brew upgrade --cask byterate`。
 
-> Homebrew 只负责安装，不会自动启动应用，所以最后一行 `open` 用来打开 ByteRate。Homebrew 可能会要求你先信任这个 tap，因为它不是官方 Homebrew tap。应用暂未经过 Apple 公证，安装脚本和 cask 都会在安装后移除 quarantine 隔离属性（否则 Gatekeeper 会拦截）。介意此行为请改用源码安装。
-
-### 直接下载
-
-从 [Releases](https://github.com/mhmh-X/byterate/releases) 下载最新的 `ByteRate-x.y.z.zip`，解压后把 `ByteRate.app` 拖进「应用程序」。
-
-应用暂未经过 Apple 公证，首次打开请 **右键 → 打开**，或执行：
-
-```sh
-xattr -dr com.apple.quarantine /Applications/ByteRate.app
-```
-
+> Homebrew 可能会要求你先信任这个 tap，因为它不是官方 Homebrew tap。应用暂未经过 Apple 公证，安装脚本和 cask 都会在安装后移除 quarantine 隔离属性（否则 Gatekeeper 会拦截）。介意此行为请改用源码安装。
 
 ### 源码安装
 
@@ -95,7 +84,8 @@ open /Applications/ByteRate.app
 ## 排障
 
 - **找不到凭据**——先用对应 CLI 登录，再刷新 ByteRate。
-- **Homebrew 装完但菜单栏没有图标**——执行 `open -a ByteRate`。如果仍看不到，先切到 Finder 或收起几个菜单栏图标；macOS 可能会把状态栏图标藏在刘海或当前应用菜单后面。
+- **Homebrew 装完但菜单栏没有图标**——执行 `open /Applications/ByteRate.app`。如果仍看不到，先切到 Finder 或收起几个菜单栏图标；macOS 可能会把状态栏图标藏在刘海或当前应用菜单后面。
+- **Homebrew checksum mismatch / 校验失败**——本地 tap 缓存旧了。先执行 `brew update` 后重试；仍失败则执行：`brew untap mhmh-X/byterate && brew tap mhmh-X/byterate https://github.com/mhmh-X/byterate && brew install --cask byterate`。
 - **401 / token 缺失**——重新执行 CLI 登录（`codex login`，或在 Claude Code 中重新登录）。
 - **429 被限流**——等几分钟即可，ByteRate 会自动退避重试。
 - **接口返回结构无法识别**——Anthropic/OpenAI 可能调整了私有额度接口。请更新 ByteRate，或带上错误文案提交 issue。

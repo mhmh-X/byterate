@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">ByteRate</title>
+  <desc id="desc">A minimal warm flame mark with a sharp usage notch.</desc>
+  <defs>
+    <linearGradient id="flame" x1="270" y1="250" x2="760" y2="860" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF4B34"/>
+      <stop offset="1" stop-color="#FF6B3D"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="#FFF7EC"/>
+
+  <path
+    fill="url(#flame)"
+    d="M744 221
+       C760 219 775 226 784 239
+       C793 252 793 268 783 282
+       L586 563
+       C578 575 591 590 604 582
+       L784 471
+       L784 610
+       C784 793 636 941 453 941
+       C270 941 122 793 122 610
+       C122 447 237 309 396 267
+       C506 238 635 234 744 221
+       Z"
+  />
+</svg>

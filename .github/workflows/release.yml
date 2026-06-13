@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      # 默认 checkout 触发的 tag 本身，保证发布产物与 tag 源码一致
+      - uses: actions/checkout@v4
+
+      - name: Build universal app
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          make release VERSION=$VERSION
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          cp "build/ByteRate-$VERSION.zip" "build/ByteRate.zip"
+          gh release create "$GITHUB_REF_NAME" "build/ByteRate-$VERSION.zip" "build/ByteRate.zip" \
+            --title "ByteRate $VERSION" --generate-notes
+
+      - name: Update Homebrew cask
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          SHA=$(shasum -a 256 "build/ByteRate-$VERSION.zip" | cut -d' ' -f1)
+          git fetch origin main
+          git checkout main
+          sed -i '' \
+            -e "s|^  version .*|  version \"$VERSION\"|" \
+            -e "s|^  sha256 .*|  sha256 \"$SHA\"|" \
+            Casks/byterate.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/byterate.rb
+          git commit -m "cask: update to $VERSION"
+          # main 可能有新提交，rebase 重试避免 non-fast-forward 留下"已发 release 但 cask 没更新"的半发布状态
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git pull --rebase origin main
+          done
+          echo "::error::Failed to push cask update after 3 attempts"
+          exit 1

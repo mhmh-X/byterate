@@ -1,0 +1,353 @@
+import AppKit
+import SwiftUI
+import ServiceManagement
+import UserNotifications
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private var statusItem: NSStatusItem!
+    private let state = AppState()
+    private var timer: Timer?
+    private var hostingItem: NSMenuItem!
+    private var refreshItem: NSMenuItem!
+    private var loginItem: NSMenuItem!
+    private var quitItem: NSMenuItem!
+    private var langZHItem: NSMenuItem!
+    private var langENItem: NSMenuItem!
+    private var notifyMenuItem: NSMenuItem!
+    private var notifyOffItem: NSMenuItem!
+    private var notifyItems: [Int: NSMenuItem] = [:]
+    private var displayMenuItem: NSMenuItem!
+    private var displayItems: [Settings.MenuBarMode: NSMenuItem] = [:]
+    private var showClaudeItem: NSMenuItem!
+    private var showCodexItem: NSMenuItem!
+    private var updateItem: NSMenuItem!
+    private var titleObserver: Any?
+
+    private static let normalInterval: TimeInterval = 300
+    private static let tightInterval: TimeInterval = 120   // 任一窗口剩余 <20% 时
+    private var currentInterval: TimeInterval = 300
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Settings.materializeDefaults()
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        updateStatusImage()
+
+        let menu = NSMenu()
+        menu.autoenablesItems = false   // 手动控制 isEnabled，避免被 autoenable 机制覆盖
+        menu.delegate = self
+
+        hostingItem = NSMenuItem()
+        let hosting = NSHostingView(rootView: MenuView(state: state))
+        hosting.frame = NSRect(x: 0, y: 0, width: MenuView.panelWidth, height: 220)
+        hosting.autoresizingMask = [.width]
+        hostingItem.view = hosting
+        menu.addItem(hostingItem)
+
+        menu.addItem(.separator())
+        refreshItem = menu.addItem(withTitle: "", action: #selector(refreshNow), keyEquivalent: "r")
+        refreshItem.target = self
+        loginItem = menu.addItem(withTitle: "", action: #selector(toggleLogin), keyEquivalent: "")
+        loginItem.target = self
+
+        displayMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let displayMenu = NSMenu()
+        displayMenu.autoenablesItems = false
+        for mode in Settings.MenuBarMode.allCases {
+            let item = displayMenu.addItem(withTitle: "", action: #selector(switchDisplayMode(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            displayItems[mode] = item
+        }
+        displayMenu.addItem(.separator())
+        showClaudeItem = displayMenu.addItem(withTitle: "Claude", action: #selector(toggleClaude), keyEquivalent: "")
+        showClaudeItem.target = self
+        showCodexItem = displayMenu.addItem(withTitle: "Codex", action: #selector(toggleCodex), keyEquivalent: "")
+        showCodexItem.target = self
+        displayMenuItem.submenu = displayMenu
+        menu.addItem(displayMenuItem)
+
+        notifyMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let notifyMenu = NSMenu()
+        notifyMenu.autoenablesItems = false
+        notifyOffItem = notifyMenu.addItem(withTitle: "", action: #selector(notifyOff), keyEquivalent: "")
+        notifyOffItem.target = self
+        notifyMenu.addItem(.separator())
+        for t in Settings.allThresholds {
+            let item = notifyMenu.addItem(withTitle: "", action: #selector(toggleThreshold(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = t
+            notifyItems[t] = item
+        }
+        notifyMenuItem.submenu = notifyMenu
+        menu.addItem(notifyMenuItem)
+
+        let langItem = NSMenuItem(title: "语言 / Language", action: nil, keyEquivalent: "")
+        let langMenu = NSMenu()
+        langMenu.autoenablesItems = false
+        langZHItem = langMenu.addItem(withTitle: "中文", action: #selector(switchToZH), keyEquivalent: "")
+        langZHItem.target = self
+        langENItem = langMenu.addItem(withTitle: "English", action: #selector(switchToEN), keyEquivalent: "")
+        langENItem.target = self
+        langItem.submenu = langMenu
+        menu.addItem(langItem)
+
+        menu.addItem(.separator())
+        updateItem = menu.addItem(withTitle: "", action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        quitItem = menu.addItem(withTitle: "", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        statusItem.menu = menu
+        updateMenuTitles()
+
+        // 状态变化时更新菜单栏标题
+        titleObserver = state.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.updateStatusImage()
+                self.resizeHosting()
+            }
+        }
+
+        UNUserNotificationCenter.current().delegate = self
+        Notifier.requestAuthorizationIfNeeded()
+        scheduleTimer(interval: Self.normalInterval)
+        Task { await refresh() }
+    }
+
+    private var retryScheduled = false
+    private var retryDelay: TimeInterval = 30
+
+    private func scheduleTimer(interval: TimeInterval) {
+        currentInterval = interval
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let appDelegate = self else { return }
+            Task { @MainActor in await appDelegate.refresh() }
+        }
+    }
+
+    private func refresh() async {
+        // 撞上在飞请求时直接返回，不基于陈旧状态做退避/轮询决策
+        guard await state.refresh() else { return }
+        // 额度紧张时加密轮询到 2 分钟，恢复后退回 5 分钟
+        let desired = state.isTight ? Self.tightInterval : Self.normalInterval
+        if desired != currentInterval { scheduleTimer(interval: desired) }
+        // 失败（如被限流）时自动重试，间隔指数退避（30s → 60s → … → 5min），成功后复位
+        if state.hasError {
+            guard !retryScheduled else { return }
+            retryScheduled = true
+            let delay = retryDelay
+            retryDelay = min(retryDelay * 2, 300)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                self.retryScheduled = false
+                Task { @MainActor in await self.refresh() }
+            }
+        } else {
+            retryDelay = 30
+        }
+    }
+
+    private func resizeHosting() {
+        guard let hosting = hostingItem.view as? NSHostingView<MenuView> else { return }
+        let size = hosting.fittingSize
+        hosting.frame = NSRect(x: 0, y: 0, width: MenuView.panelWidth, height: size.height)
+    }
+
+    @objc private func refreshNow() {
+        Task { await refresh() }
+    }
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
+    }
+
+    private func updateStatusImage() {
+        statusItem.button?.title = ""
+        statusItem.button?.font = nil
+
+        let iconOnly = Settings.menuBarMode == .iconOnly
+        if iconOnly {
+            let image = Icons.statusIcon()
+            statusItem.length = image.size.width + 8
+            statusItem.button?.image = image
+            statusItem.button?.imagePosition = .imageOnly
+            return
+        }
+
+        let image = Icons.statusImage(
+            claudeText: state.statusText(for: state.claude),
+            codexText: state.statusText(for: state.codex),
+            showClaude: Settings.showClaude,
+            showCodex: Settings.showCodex
+        )
+        statusItem.length = image.size.width + 8
+        statusItem.button?.image = image
+        statusItem.button?.imagePosition = .imageOnly
+    }
+
+    // MARK: - 菜单栏显示 / 通知
+
+    @objc private func switchDisplayMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = Settings.MenuBarMode(rawValue: raw) else { return }
+        Settings.menuBarMode = mode
+        updateStatusImage()
+        updateMenuTitles()
+    }
+
+    @objc private func toggleClaude() { toggleProvider(claude: true) }
+    @objc private func toggleCodex() { toggleProvider(claude: false) }
+
+    private func toggleProvider(claude: Bool) {
+        // 至少保留一家
+        if claude {
+            if Settings.showClaude && !Settings.showCodex { NSSound.beep(); return }
+            Settings.showClaude.toggle()
+            if !Settings.showClaude { state.clearNote(claude: true) }
+        } else {
+            if Settings.showCodex && !Settings.showClaude { NSSound.beep(); return }
+            Settings.showCodex.toggle()
+            if !Settings.showCodex { state.clearNote(claude: false) }
+        }
+        state.bumpSettings()
+        updateStatusImage()
+        updateMenuTitles()
+        resizeHosting()
+        Task { await refresh() }
+    }
+
+    // MARK: - 检查更新
+
+    @objc private func checkForUpdates() {
+        updateItem.isEnabled = false
+        Task { @MainActor in
+            let result = await UpdateChecker.check()
+            updateItem.isEnabled = true
+            let alert = NSAlert()
+            switch result {
+            case .newVersion(let v):
+                alert.messageText = L.t("发现新版本 \(v)", "New version \(v) available")
+                alert.informativeText = L.t("当前版本 \(UpdateChecker.currentVersion)。Homebrew 用户可执行 brew upgrade --cask byterate。",
+                                            "Current version \(UpdateChecker.currentVersion). Homebrew users: brew upgrade --cask byterate.")
+                alert.addButton(withTitle: L.t("前往下载", "Open releases"))
+                alert.addButton(withTitle: L.t("取消", "Cancel"))
+                NSApp.activate(ignoringOtherApps: true)
+                if alert.runModal() == .alertFirstButtonReturn,
+                   let url = URL(string: UpdateChecker.releasesURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            case .upToDate:
+                alert.messageText = L.t("已是最新版本", "You're up to date")
+                alert.informativeText = L.t("当前版本 \(UpdateChecker.currentVersion)", "Current version \(UpdateChecker.currentVersion)")
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+            case .failed(let msg):
+                alert.messageText = L.t("检查更新失败", "Update check failed")
+                alert.informativeText = msg
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+            }
+        }
+    }
+
+    @objc private func notifyOff() {
+        Settings.thresholds = []
+        updateMenuTitles()
+    }
+
+    @objc private func toggleThreshold(_ sender: NSMenuItem) {
+        guard let t = sender.representedObject as? Int else { return }
+        var set = Settings.thresholds
+        if set.contains(t) { set.remove(t) } else { set.insert(t) }
+        Settings.thresholds = set
+        Notifier.requestAuthorizationIfNeeded()
+        updateMenuTitles()
+    }
+
+    // MARK: - 语言
+
+    private func updateMenuTitles() {
+        statusItem.button?.toolTip = L.t("ByteRate — Claude / Codex 5 小时窗口剩余额度",
+                                         "ByteRate — Claude / Codex 5-hour window remaining")
+        refreshItem.title = L.t("立即刷新", "Refresh now")
+        loginItem.title = L.t("登录时启动", "Launch at login")
+        quitItem.title = L.t("退出 ByteRate", "Quit ByteRate")
+        langZHItem.state = L.isZH ? .on : .off
+        langENItem.state = L.isZH ? .off : .on
+
+        displayMenuItem.title = L.t("菜单栏显示", "Menu bar shows")
+        let modeTitles: [Settings.MenuBarMode: String] = [
+            .fiveHour: L.t("5 小时窗剩余", "5-hour remaining"),
+            .weekly: L.t("周窗剩余", "Weekly remaining"),
+            .lowest: L.t("两窗最低值", "Lowest of both"),
+            .iconOnly: L.t("纯图标", "Icons only"),
+        ]
+        for (mode, item) in displayItems {
+            item.title = modeTitles[mode] ?? ""
+            item.state = Settings.menuBarMode == mode ? .on : .off
+        }
+
+        showClaudeItem.state = Settings.showClaude ? .on : .off
+        showCodexItem.state = Settings.showCodex ? .on : .off
+        updateItem.title = L.t("检查更新…", "Check for updates…")
+
+        notifyMenuItem.title = L.t("低额度通知", "Low quota alerts")
+        notifyOffItem.title = L.t("关闭", "Off")
+        notifyOffItem.state = Settings.thresholds.isEmpty ? .on : .off
+        for (t, item) in notifyItems {
+            item.title = L.t("剩余低于 \(t)%", "Below \(t)% left")
+            item.state = Settings.thresholds.contains(t) ? .on : .off
+        }
+    }
+
+    @objc private func switchToZH() {
+        state.setLanguage("zh")
+        updateMenuTitles()
+        resizeHosting()
+    }
+
+    @objc private func switchToEN() {
+        state.setLanguage("en")
+        updateMenuTitles()
+        resizeHosting()
+    }
+
+    // MARK: - 登录时启动
+
+    @objc private func toggleLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        updateMenuTitles()
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        // 以 .app 形式运行才支持登录启动
+        loginItem.isEnabled = Bundle.main.bundleIdentifier != nil
+        resizeHosting()
+        // 数据超过 60 秒则在打开菜单时顺便刷新
+        if state.lastUpdated.map({ Date().timeIntervalSince($0) > 60 }) ?? true {
+            Task { await refresh() }
+        }
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    // App 在前台时也照常展示横幅
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+}

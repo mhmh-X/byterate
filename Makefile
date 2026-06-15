@@ -1,5 +1,5 @@
 APP      = ByteRate
-VERSION ?= 0.2.4
+VERSION ?= 0.2.5
 BUILDDIR = .build/release
 APPDIR   = build/$(APP).app
 

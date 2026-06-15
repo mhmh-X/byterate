@@ -227,16 +227,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateItem.isEnabled = true
             let alert = NSAlert()
             switch result {
-            case .newVersion(let v):
+            case .newVersion(let v, let notes):
                 alert.messageText = L.t("发现新版本 \(v)", "New version \(v) available")
-                alert.informativeText = L.t("当前版本 \(UpdateChecker.currentVersion)。Homebrew 用户可执行 brew upgrade --cask byterate。",
-                                            "Current version \(UpdateChecker.currentVersion). Homebrew users: brew upgrade --cask byterate.")
+                var info = L.t("当前版本 \(UpdateChecker.currentVersion)。",
+                               "Current version \(UpdateChecker.currentVersion).")
+                if let notes {
+                    info += "\n\n" + L.t("更新内容：", "What's new:") + "\n" + notes
+                }
+                alert.informativeText = info
+                alert.addButton(withTitle: L.t("立即更新", "Update now"))
                 alert.addButton(withTitle: L.t("前往下载", "Open releases"))
                 alert.addButton(withTitle: L.t("取消", "Cancel"))
                 NSApp.activate(ignoringOtherApps: true)
-                if alert.runModal() == .alertFirstButtonReturn,
-                   let url = URL(string: UpdateChecker.releasesURL) {
-                    NSWorkspace.shared.open(url)
+                switch alert.runModal() {
+                case .alertFirstButtonReturn:
+                    runInPlaceUpdate()
+                case .alertSecondButtonReturn:
+                    if let url = URL(string: UpdateChecker.releasesURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                default:
+                    break
                 }
             case .upToDate:
                 alert.messageText = L.t("已是最新版本", "You're up to date")
@@ -250,6 +261,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 alert.runModal()
             }
         }
+    }
+
+    /// 在后台跑安装脚本完成一键更新：下载新版 → 替换 → 退出旧实例 → 重启。
+    /// 脚本是独立子进程，脚本里的 `pkill -x ByteRate` 只杀本应用、不影响它自己，
+    /// 本应用被杀后脚本继续执行并 `open` 新版本。
+    private func runInPlaceUpdate() {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        // -lc 走登录 shell，保证 curl 在 PATH 里
+        proc.arguments = ["-lc", "curl -fsSL '\(UpdateChecker.installScriptURL)' | bash"]
+        do {
+            try proc.run()
+        } catch {
+            let err = NSAlert()
+            err.messageText = L.t("更新启动失败", "Couldn't start the update")
+            err.informativeText = L.t("请改用「前往下载」手动更新。\n\(error.localizedDescription)",
+                                      "Please use \"Open releases\" to update manually.\n\(error.localizedDescription)")
+            NSApp.activate(ignoringOtherApps: true)
+            err.runModal()
+            return
+        }
+        let info = NSAlert()
+        info.messageText = L.t("正在更新…", "Updating…")
+        info.informativeText = L.t("正在后台下载并安装新版本，完成后会自动重启 ByteRate。",
+                                   "Downloading and installing in the background — ByteRate will relaunch automatically.")
+        NSApp.activate(ignoringOtherApps: true)
+        info.runModal()
     }
 
     @objc private func notifyOff() {

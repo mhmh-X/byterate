@@ -3,6 +3,7 @@ import Foundation
 /// 轻量更新检查：查 GitHub 最新 release 的 tag 和当前版本比对。
 enum UpdateChecker {
     static let releasesURL = "https://github.com/mhmh-X/byterate/releases/latest"
+    static let installScriptURL = "https://raw.githubusercontent.com/mhmh-X/byterate/main/scripts/install.sh"
     private static let apiURL = "https://api.github.com/repos/mhmh-X/byterate/releases/latest"
 
     static var currentVersion: String {
@@ -11,7 +12,7 @@ enum UpdateChecker {
 
     enum Result {
         case upToDate(String)
-        case newVersion(String)
+        case newVersion(version: String, notes: String?)
         case failed(String)
     }
 
@@ -21,15 +22,29 @@ enum UpdateChecker {
             guard status == 200 else {
                 return .failed(L.t("检查失败（\(status)）", "Check failed (\(status))"))
             }
-            guard let tag = HTTP.json(data)["tag_name"] as? String else {
+            let json = HTTP.json(data)
+            guard let tag = json["tag_name"] as? String else {
                 return .failed(L.t("响应缺少版本号", "Response missing tag_name"))
             }
             let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-            return isNewer(latest, than: currentVersion) ? .newVersion(latest) : .upToDate(latest)
+            guard isNewer(latest, than: currentVersion) else { return .upToDate(latest) }
+            return .newVersion(version: latest, notes: cleanNotes(json["body"] as? String))
         } catch {
             return .failed(L.t("网络错误：\(error.localizedDescription)",
                                "Network error: \(error.localizedDescription)"))
         }
+    }
+
+    /// 把 GitHub 自动生成的 release notes 精简成适合弹框展示的纯文本（去掉链接行、限制长度）。
+    private static func cleanNotes(_ body: String?) -> String? {
+        guard var text = body?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
+            let l = line.lowercased()
+            return !l.contains("full changelog") && !l.hasPrefix("**full")
+        }
+        text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.count > 800 { text = String(text.prefix(800)) + "…" }
+        return text.isEmpty ? nil : text
     }
 
     /// 简单语义化版本比较（按 . 分段比数字）。

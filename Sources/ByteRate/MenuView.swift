@@ -9,22 +9,13 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if Settings.showClaude {
-                ProviderSection(title: "Claude", icon: Image(nsImage: Icons.claude(size: 16)), iconIsTemplate: false, state: state.claude, note: state.claudeNote)
+                ProviderSection(title: "Claude", icon: Image(nsImage: Icons.claude(size: 16)), iconIsTemplate: false, state: state.claude, note: state.claudeNote, updated: state.claudeUpdated, refreshing: state.refreshing)
             }
             if Settings.showClaude && Settings.showCodex {
                 Divider()
             }
             if Settings.showCodex {
-                ProviderSection(title: "Codex", icon: Image(nsImage: Icons.openAI(size: 16)), iconIsTemplate: true, state: state.codex, note: state.codexNote)
-            }
-            if let t = state.lastUpdated {
-                Divider()
-                HStack {
-                    Text("\(L.t("更新于", "Updated")) \(t, format: .dateTime.hour().minute())")
-                    if state.refreshing { Text(L.t("刷新中…", "refreshing…")) }
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                ProviderSection(title: "Codex", icon: Image(nsImage: Icons.openAI(size: 16)), iconIsTemplate: true, state: state.codex, note: state.codexNote, updated: state.codexUpdated, refreshing: state.refreshing)
             }
         }
         .padding(.horizontal, 14)
@@ -39,6 +30,13 @@ private struct ProviderSection: View {
     let iconIsTemplate: Bool
     let state: ProviderState
     let note: BiText?
+    let updated: Date?
+    let refreshing: Bool
+
+    private func isPaidPlan(_ plan: String?) -> Bool {
+        guard let p = plan?.lowercased() else { return false }
+        return ["plus", "pro", "max", "team", "enterprise", "business"].contains(p)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -56,12 +54,30 @@ private struct ProviderSection: View {
                         .background(.quaternary, in: Capsule())
                 }
                 Spacer()
+                // 到期日仅 Codex 有（来自 id_token）。OpenAI 端的日期可能滞后，故：
+                // 未来日期 → 显示到期日；已过去但仍是付费档 → 说明已续费、显示"订阅有效"；
+                // 真到期则 plan_type 会降为 free，这里都不显示，徽章会变成 Free
                 if case .ok(let u) = state, let expiry = u.planExpiresAt {
-                    Text(L.t("订阅 \(expiry.expiryDescription) 到期", "Plan expires \(expiry.expiryDescription)"))
-                        .font(.caption2)
-                        .foregroundStyle(expiry.timeIntervalSinceNow < 3 * 86400 ? .orange : .secondary)
+                    if expiry.timeIntervalSinceNow > 0 {
+                        Text(L.t("订阅 \(expiry.expiryDescription) 到期", "Plan expires \(expiry.expiryDescription)"))
+                            .font(.caption2)
+                            .foregroundStyle(expiry.timeIntervalSinceNow < 3 * 86400 ? .orange : .secondary)
+                    } else if isPaidPlan(u.plan) {
+                        Text(L.t("订阅有效", "Active"))
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    }
                 }
             }
+            Group {
+                if refreshing {
+                    Text(L.t("刷新中…", "refreshing…"))
+                } else if let updated {
+                    Text("\(L.t("更新于", "Updated")) \(updated.timeDescription)")
+                }
+            }
+            .font(.caption2).foregroundStyle(.secondary)
+            .padding(.top, 1)
             switch state {
             case .loading:
                 Text(L.t("加载中…", "Loading…")).font(.caption).foregroundStyle(.secondary)

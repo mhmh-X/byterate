@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let iconOnly = Settings.menuBarMode == .iconOnly
         if iconOnly {
             let image = Icons.statusIcon()
-            statusItem.length = image.size.width + 8
+            statusItem.length = image.size.width
             statusItem.button?.image = image
             statusItem.button?.imagePosition = .imageOnly
             return
@@ -182,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             showClaude: Settings.showClaude,
             showCodex: Settings.showCodex
         )
-        statusItem.length = image.size.width + 8
+        statusItem.length = image.size.width
         statusItem.button?.image = image
         statusItem.button?.imagePosition = .imageOnly
     }

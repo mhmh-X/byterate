@@ -86,4 +86,13 @@ extension Date {
         fmt.dateFormat = L.isZH ? "M月d日" : "MMM d"
         return fmt.string(from: self)
     }
+
+    /// 时分："10:23" / "10:23 AM"，跟随应用语言而非系统 locale。
+    var timeDescription: String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: L.isZH ? "zh_CN" : "en_US")
+        fmt.timeStyle = .short
+        fmt.dateStyle = .none
+        return fmt.string(from: self)
+    }
 }

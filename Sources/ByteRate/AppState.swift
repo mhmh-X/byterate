@@ -8,7 +8,11 @@ final class AppState: ObservableObject {
     /// 刷新失败但仍在展示旧数据时的提示。
     @Published var claudeNote: BiText?
     @Published var codexNote: BiText?
+    /// 最近一次刷新尝试时间（成功与否都更新），用于"打开菜单时是否需要刷新"的判断。
     @Published var lastUpdated: Date?
+    /// 各服务商最近一次成功获取的时间；失败不更新，避免展示陈旧时间。
+    @Published var claudeUpdated: Date?
+    @Published var codexUpdated: Date?
     @Published var refreshing = false
     /// 当前界面语言（"zh" / "en"），改变时触发整个 UI 重渲染。
     @Published var languageCode: String = L.code
@@ -52,10 +56,12 @@ final class AppState: ObservableObject {
         let (claudeResult, codexResult) = await (c, x)
         if let claudeResult {
             (claude, claudeNote) = Self.merge(old: claude, new: claudeResult)
+            if case .ok = claudeResult { claudeUpdated = Date() }
             Notifier.check(provider: "Claude", state: claude)
         }
         if let codexResult {
             (codex, codexNote) = Self.merge(old: codex, new: codexResult)
+            if case .ok = codexResult { codexUpdated = Date() }
             Notifier.check(provider: "Codex", state: codex)
         }
         lastUpdated = Date()

@@ -80,7 +80,7 @@ If Claude is enabled, the first quota fetch asks for keychain access to read the
 
 ## Privacy
 
-Credentials are read locally and sent only to first-party Anthropic/OpenAI hosts: `api.anthropic.com` / `claude.ai` and `chatgpt.com` / `auth.openai.com`. These quota endpoints are not public stable APIs and may change; ByteRate fails closed instead of guessing if the response shape is not recognized. The only other network request is the manual "Check for updates" action, which queries the GitHub Releases API. No other servers, no analytics, no data collection. When a token expires, ByteRate refreshes it and writes it back where the CLI keeps it, so both stay signed in.
+Credentials are read locally and sent only to first-party Anthropic/OpenAI hosts: `api.anthropic.com` / `claude.ai` and `chatgpt.com` / `auth.openai.com`. These quota endpoints are not public stable APIs and may change; ByteRate fails closed instead of guessing if the response shape is not recognized. The only other network request is the manual "Check for updates" action, which queries the GitHub Releases API. No other servers, no analytics, no data collection. For Claude, ByteRate only ever **reads** the keychain — it never refreshes or writes the credential, so it won't disturb Claude Code's own keychain access. (Codex tokens are refreshed in `~/.codex/auth.json` as before.) If the Claude token has expired and you haven't used Claude Code in a while, that panel shows a gentle "use Claude Code once" note until the CLI refreshes it.
 
 ## Troubleshooting
 

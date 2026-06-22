@@ -263,10 +263,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private var isUpdating = false
+
     /// 在后台跑安装脚本完成一键更新：下载新版 → 替换 → 退出旧实例 → 重启。
     /// 脚本是独立子进程，脚本里的 `pkill -x ByteRate` 只杀本应用、不影响它自己，
     /// 本应用被杀后脚本继续执行并 `open` 新版本。
     private func runInPlaceUpdate() {
+        // 防重入：更新已在进行时，再次点击不会启动第二个安装进程（否则两个进程同时 rm/装/重启）
+        guard !isUpdating else {
+            let busy = NSAlert()
+            busy.messageText = L.t("更新进行中", "Update in progress")
+            busy.informativeText = L.t("已经在下载安装新版本了，请稍候自动重启。",
+                                       "Already downloading and installing — please wait for the relaunch.")
+            NSApp.activate(ignoringOtherApps: true)
+            busy.runModal()
+            return
+        }
+        isUpdating = true
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/bash")
         // -lc 走登录 shell，保证 curl 在 PATH 里
@@ -274,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         do {
             try proc.run()
         } catch {
+            isUpdating = false
             let err = NSAlert()
             err.messageText = L.t("更新启动失败", "Couldn't start the update")
             err.informativeText = L.t("请改用「前往下载」手动更新。\n\(error.localizedDescription)",

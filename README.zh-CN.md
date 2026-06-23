@@ -79,7 +79,7 @@ open /Applications/ByteRate.app
 
 ## 隐私
 
-凭据只在本机读取，只发往 Anthropic/OpenAI 第一方主机：`api.anthropic.com` / `claude.ai` 和 `chatgpt.com` / `auth.openai.com`。这些额度接口不是公开稳定 API，未来可能变化；如果返回结构无法识别，ByteRate 会报错而不是猜测额度。唯一的额外网络请求是你手动点「检查更新」时查询 GitHub Releases API。除此之外没有任何其他服务器、没有统计埋点、不收集任何数据。对 Claude，ByteRate 只**读取**钥匙串、从不刷新或写回凭据，因此不会干扰 Claude Code 自己对钥匙串的访问（Codex 的 token 仍在 `~/.codex/auth.json` 里自动续期）。若 Claude token 已过期、而你一阵子没用 Claude Code，该栏会提示「用一次 Claude Code 即可」，等 CLI 自己续上。
+凭据只在本机读取，只发往 Anthropic/OpenAI 第一方主机：`api.anthropic.com` / `claude.ai` 和 `chatgpt.com` / `auth.openai.com`。这些额度接口不是公开稳定 API，未来可能变化；如果返回结构无法识别，ByteRate 会报错而不是猜测额度。唯一的额外网络请求是你手动点「检查更新」时查询 GitHub Releases API。除此之外没有任何其他服务器、没有统计埋点、不收集任何数据。token 过期时，ByteRate 会自动刷新并写回各 CLI 存放凭据的位置（Claude 在钥匙串、Codex 在 `~/.codex/auth.json`），所以即使你很少打开 CLI，两栏也保持新鲜，且 CLI 仍保持登录。
 
 ## 排障
 
